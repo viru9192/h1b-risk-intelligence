@@ -41,14 +41,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Load Data ──────────────────────────────────────────────────
+
+
 @st.cache_data
 def load_data():
     df = pd.read_parquet("data/df_model.parquet")
     df["FISCAL_YEAR"] = pd.to_numeric(df["FISCAL_YEAR"],
-                                       errors="coerce")
+                                      errors="coerce")
     df = df.dropna(subset=["FISCAL_YEAR"])
     df["FISCAL_YEAR"] = df["FISCAL_YEAR"].astype(int)
     return df
+
 
 df = load_data()
 
@@ -104,7 +107,7 @@ k1.metric("Total Employers",
 k2.metric("Avg Denial Rate",
           f"{df_filtered['DENIAL_RATE'].mean():.1%}")
 k3.metric("High Risk Employers",
-          f"{(df_filtered['is_high_risk']==1).sum():,}")
+          f"{(df_filtered['is_high_risk'] == 1).sum():,}")
 k4.metric("Avg H1B Wage",
           f"${df_filtered['LCA_AVG_WAGE'].mean():,.0f}")
 
@@ -144,46 +147,80 @@ with tab1:
         else:
             selected = st.selectbox("Select employer:", matches)
             emp_data = df[df["EMPLOYER_NAME"] == selected]
-            latest = emp_data.sort_values(
-                "FISCAL_YEAR", ascending=False
-            ).iloc[0]
 
-            denial_rate = latest["DENIAL_RATE"]
+            # ── All metrics aggregated across all years ────────
+            denial_rate = emp_data["DENIAL_RATE"].mean()
+            total_petitions = int(emp_data["TOTAL_PETITIONS"].sum())
+            avg_wage = int(emp_data["LCA_AVG_WAGE"].mean())
+            avg_wage_ratio = emp_data["LCA_AVG_WAGE_RATIO"].mean()
+            avg_cert_rate = emp_data["LCA_CERT_RATE"].mean()
             risk_flag = denial_rate >= 0.10
 
-            # Risk banner
+            # ── Risk banner ────────────────────────────────────
             if risk_flag:
                 st.markdown(
                     f"<div class='risk-high'>"
-                    f"<b>🔴 HIGH RISK EMPLOYER</b> — "
-                    f"Denial rate {denial_rate:.1%} exceeds 10% threshold"
+                    f"<b>🔴 HIGH RISK EMPLOYER</b> "
+                    f"Avg denial rate {denial_rate:.1%} exceeds "
+                    f"10% threshold across all years"
                     f"</div>",
                     unsafe_allow_html=True
                 )
             else:
                 st.markdown(
                     f"<div class='risk-low'>"
-                    f"<b>🟢 LOW RISK EMPLOYER</b> — "
-                    f"Denial rate {denial_rate:.1%} is within safe range"
+                    f"<b>🟢 LOW RISK EMPLOYER</b> "
+                    f"Avg denial rate {denial_rate:.1%} is within "
+                    f"safe range across all years"
                     f"</div>",
                     unsafe_allow_html=True
                 )
 
-            # Metrics
+            # ── Metrics row ────────────────────────────────────
             c1, c2, c3, c4, c5 = st.columns(5)
-            c1.metric("Denial Rate", f"{denial_rate:.1%}")
-            c2.metric("Total Petitions",
-                      f"{int(latest['TOTAL_PETITIONS']):,}")
-            c3.metric("Avg Wage",
-                      f"${int(latest['LCA_AVG_WAGE']):,}")
-            c4.metric("Wage vs Market",
-                      f"{latest['LCA_AVG_WAGE_RATIO']:.1%}")
-            c5.metric("LCA Cert Rate",
-                      f"{latest['LCA_CERT_RATE']:.1%}")
 
-            # Year over year trend
+            c1.metric(
+                "Avg Denial Rate",
+                f"{denial_rate:.1%}"
+            )
+            c2.metric(
+                "Total Petitions (All Years)",
+                f"{total_petitions:,}"
+            )
+            c3.metric(
+                "Avg Wage",
+                f"${avg_wage:,}"
+            )
+            c4.metric(
+                "Avg Wage vs Market",
+                f"{avg_wage_ratio:.1%}"
+            )
+            c5.metric(
+                "Avg LCA Cert Rate",
+                f"{avg_cert_rate:.1%}"
+            )
+
+            # ── Wage compliance signal ─────────────────────────
+            st.markdown("**Wage Compliance**")
+            if avg_wage_ratio >= 1.10:
+                st.success(
+                    f"Pays {avg_wage_ratio:.1%} of prevailing wage "
+                    f"on average. Strong compliance signal."
+                )
+            elif avg_wage_ratio >= 1.0:
+                st.info(
+                    f"Pays {avg_wage_ratio:.1%} of prevailing wage "
+                    f"on average. At market rate."
+                )
+            else:
+                st.error(
+                    f"Pays only {avg_wage_ratio:.1%} of prevailing "
+                    f"wage on average. Below market rate. "
+                    f"Higher denial risk."
+                )
+
+            # ── Year over year trend ───────────────────────────
             if len(emp_data) > 1:
-                st.markdown("---")
                 st.markdown("**Year-over-Year Denial Rate Trend**")
                 trend = emp_data.sort_values("FISCAL_YEAR")
 
@@ -191,16 +228,22 @@ with tab1:
 
                 with col_chart:
                     fig, ax = plt.subplots(figsize=(8, 3))
-                    ax.plot(trend["FISCAL_YEAR"],
-                            trend["DENIAL_RATE"],
-                            marker="o", color="crimson",
-                            linewidth=2.5)
-                    ax.fill_between(trend["FISCAL_YEAR"],
-                                    trend["DENIAL_RATE"],
-                                    alpha=0.1, color="crimson")
-                    ax.axhline(y=0.10, color="orange",
-                               linestyle="--", linewidth=1.5,
-                               label="Risk threshold (10%)")
+                    ax.plot(
+                        trend["FISCAL_YEAR"],
+                        trend["DENIAL_RATE"],
+                        marker="o", color="crimson",
+                        linewidth=2.5
+                    )
+                    ax.fill_between(
+                        trend["FISCAL_YEAR"],
+                        trend["DENIAL_RATE"],
+                        alpha=0.1, color="crimson"
+                    )
+                    ax.axhline(
+                        y=0.10, color="orange",
+                        linestyle="--", linewidth=1.5,
+                        label="Risk threshold (10%)"
+                    )
                     ax.yaxis.set_major_formatter(
                         mtick.PercentFormatter(xmax=1)
                     )
@@ -209,6 +252,11 @@ with tab1:
                     ax.set_title(
                         f"Denial Rate Trend — {selected[:40]}"
                     )
+                    ax.set_xticks(trend["FISCAL_YEAR"].tolist())
+                    ax.set_xticklabels(
+                        trend["FISCAL_YEAR"].tolist(),
+                        rotation=45
+                    )
                     ax.legend(fontsize=8)
                     plt.tight_layout()
                     st.pyplot(fig)
@@ -216,18 +264,50 @@ with tab1:
 
                 with col_table:
                     st.markdown("**Filing History**")
-                    display_cols = ["FISCAL_YEAR",
-                                    "TOTAL_PETITIONS",
-                                    "DENIAL_RATE"]
+                    display_cols = [
+                        "FISCAL_YEAR",
+                        "TOTAL_PETITIONS",
+                        "DENIAL_RATE",
+                        "LCA_AVG_WAGE"
+                    ]
                     table = trend[display_cols].copy()
                     table["DENIAL_RATE"] = (
                         table["DENIAL_RATE"]
                         .apply(lambda x: f"{x:.1%}")
                     )
-                    table.columns = ["Year", "Petitions",
-                                     "Denial Rate"]
-                    st.dataframe(table, hide_index=True,
-                                 use_container_width=True)
+                    table["LCA_AVG_WAGE"] = (
+                        table["LCA_AVG_WAGE"]
+                        .apply(lambda x: f"${x:,.0f}")
+                    )
+                    table.columns = [
+                        "Year", "Petitions",
+                        "Denial Rate", "Avg Wage"
+                    ]
+                    st.dataframe(
+                        table,
+                        hide_index=True,
+                        use_container_width=True
+                    )
+
+                # ── Summary stats below chart ──────────────────
+                st.markdown("**Summary Across All Years**")
+                s1, s2, s3, s4 = st.columns(4)
+                s1.metric(
+                    "Years Active",
+                    f"{emp_data['FISCAL_YEAR'].nunique()}"
+                )
+                s2.metric(
+                    "Best Year Denial Rate",
+                    f"{emp_data['DENIAL_RATE'].min():.1%}"
+                )
+                s3.metric(
+                    "Worst Year Denial Rate",
+                    f"{emp_data['DENIAL_RATE'].max():.1%}"
+                )
+                s4.metric(
+                    "Avg Petitions Per Year",
+                    f"{int(emp_data['TOTAL_PETITIONS'].mean()):,}"
+                )
 
 # ══════════════════════════════════════════════════════════════
 # TAB 2: EMPLOYER COMPARISON
@@ -240,13 +320,13 @@ with tab2:
 
     with col1:
         emp1 = st.text_input("Employer 1",
-                              placeholder="e.g. Infosys")
+                             placeholder="e.g. Infosys")
     with col2:
         emp2 = st.text_input("Employer 2",
-                              placeholder="e.g. Google")
+                             placeholder="e.g. Google")
     with col3:
         emp3 = st.text_input("Employer 3 (optional)",
-                              placeholder="e.g. Tata")
+                             placeholder="e.g. Tata")
 
     employers_to_compare = [e for e in [emp1, emp2, emp3] if e]
 
@@ -435,11 +515,11 @@ with tab3:
     with col2:
         st.markdown("**Denial Rate by Fiscal Year**")
         yearly = (df_filtered
-            .groupby("FISCAL_YEAR")
-            .agg(avg_denial_rate=("DENIAL_RATE", "mean"))
-            .reset_index()
-            .sort_values("FISCAL_YEAR")
-        )
+                  .groupby("FISCAL_YEAR")
+                  .agg(avg_denial_rate=("DENIAL_RATE", "mean"))
+                  .reset_index()
+                  .sort_values("FISCAL_YEAR")
+                  )
 
         fig, ax = plt.subplots(figsize=(7, 5))
         ax.plot(yearly["FISCAL_YEAR"],
@@ -474,13 +554,13 @@ with tab3:
                 "110-125%", "125-150%", ">150%"]
     )
     wage_data = (df_filtered
-        .groupby("wage_bucket", observed=True)
-        .agg(
-            avg_denial=("DENIAL_RATE", "mean"),
-            count=("EMPLOYER_NAME", "count")
-        )
-        .reset_index()
-    )
+                 .groupby("wage_bucket", observed=True)
+                 .agg(
+                     avg_denial=("DENIAL_RATE", "mean"),
+                     count=("EMPLOYER_NAME", "count")
+                 )
+                 .reset_index()
+                 )
 
     fig, ax1 = plt.subplots(figsize=(10, 4))
     ax2 = ax1.twinx()
@@ -601,19 +681,19 @@ with tab4:
 
     # Build safe employer list
     safe_df = (df_filtered
-        .groupby("EMPLOYER_NAME")
-        .agg(
-            avg_denial_rate=("DENIAL_RATE", "mean"),
-            avg_wage=("LCA_AVG_WAGE", "mean"),
-            avg_wage_ratio=("LCA_AVG_WAGE_RATIO", "mean"),
-            total_petitions=("TOTAL_PETITIONS", "sum"),
-            lca_cert_rate=("LCA_CERT_RATE", "mean"),
-            industry=("NAICS_CODE", "first"),
-            state=("EMPLOYER_STATE", "first"),
-            years=("FISCAL_YEAR", "nunique")
-        )
-        .reset_index()
-    )
+               .groupby("EMPLOYER_NAME")
+               .agg(
+                   avg_denial_rate=("DENIAL_RATE", "mean"),
+                   avg_wage=("LCA_AVG_WAGE", "mean"),
+                   avg_wage_ratio=("LCA_AVG_WAGE_RATIO", "mean"),
+                   total_petitions=("TOTAL_PETITIONS", "sum"),
+                   lca_cert_rate=("LCA_CERT_RATE", "mean"),
+                   industry=("NAICS_CODE", "first"),
+                   state=("EMPLOYER_STATE", "first"),
+                   years=("FISCAL_YEAR", "nunique")
+               )
+               .reset_index()
+               )
 
     # Apply filters
     safe_df = safe_df[
