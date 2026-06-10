@@ -4,7 +4,7 @@ Predicts H1B visa denial risk for US employers using 187,000+
 employer records from DOL LCA filings and USCIS petition data.
 
 ## 🚀 Live App
-👉 [Open Dashboard](https://h1b-risk-intelligence-u6virxq3rxjosrigiadagf.streamlit.app)
+👉 [Open Dashboard](https://huggingface.co/spaces/Viranchi9192/h1b-risk-intelligence)
 
 ## Key Findings
 - Professional & Technical Services has highest denial rate at 9.1%
